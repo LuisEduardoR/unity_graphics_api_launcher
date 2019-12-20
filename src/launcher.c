@@ -1,3 +1,4 @@
+/* glib and GTK libraries. */
 #include <glib.h>
 #include <glib/gprintf.h>
 #include <gtk/gtk.h>
@@ -6,120 +7,64 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Libraries used to create the child process on Linux. */
 #if __linux__
-	#include <unistd.h> /* for fork */
-	#include <sys/types.h> /* for pid_t */
-	#include <sys/wait.h> /* for wait */
+	#include <unistd.h>
+	#include <sys/types.h>
+	#include <sys/wait.h>
 #endif
 
 #define PROGRAM_TITLE "Program Name"
 
-#if __LINUX__
-	#define EXEC_PATH "./game/program_name.x86_64"
+/* Path to the unity executable. */
+#if __linux__
+	#define EXEC_PATH "./game/linux_program_name.x86_64"
+	#define BANNER_PATH "./banner.png"
 #else
-	#define EXEC_PATH "./game/program_name.exe"
+	#define EXEC_PATH "./game/win_program_name.exe"
+	#define BANNER_PATH "./banner.png"
 #endif
 
 /* Names of the available graphics APIs. */
 #if __linux__	
-	const char *graphics_apis_args[] = {"-force-glcore", "-force-vulkan"};
-	const char *graphics_apis_names[] = {"", "Open GL", "Vulkan"};
+	const char *graphic_api_args[] = {"-force-glcore", "-force-vulkan"};
+	const char *graphic_api_button_text_names[] = {"Launch with Open GL", "Launch with Vulkan"};
 #else
-	const char *graphics_apis_args[] = {"-force-d3d11", "-force-d3d12", "-force-glcore", "-force-vulkan"};
-	const char *graphics_apis_names[] = {"", "DirectX11", "DirectX12", "Open GL", "Vulkan"};
+	const char *graphic_api_args[] = {"-force-d3d11", "-force-d3d12", "-force-glcore", "-force-vulkan"};
+	const char *graphic_api_button_text_names[] = {"Launch with DirectX11", "Launch with DirectX12", "Launch with Open GL", "Launch with Vulkan"};
 #endif
-#define GRAPHICS_API_COUNT G_N_ELEMENTS(graphics_apis_args)
-
-const char *minimal_args[] = {"-screen-width", "1024", "-screen-height", "768", "-screen-fullscreen", "0", "-screen-quality", "Very Low"};
-#define MINIMAL_ARGS_COUNT G_N_ELEMENTS(minimal_args)
-
-#define DEFAULT_GRAPHICS_API 0
-
-/* Current graphics api. */
-int current_graphics_api;
-/* If minimal mode is enabled. */
-gboolean minimal_graphics_mode;
+#define GRAPHIC_API_COUNT G_N_ELEMENTS(graphic_api_args)
+#define DEFAULT_GRAPHIC_API 0 /* Number of avaliable graphic APIs. */
 
 /* Main program window. */
-GtkWidget *main_window;
+static GtkWidget *main_window = NULL;
 
-static void on_api_dropdown_changed (GtkComboBox *widget, gpointer user_data) {
-
-	GtkComboBox *api_dropdown = widget;
-
-	/* Gets the changed API. */
-	gchar *api = gtk_combo_box_text_get_active_text (GTK_COMBO_BOX_TEXT(api_dropdown));
-	
-	/* Verifies the selected graphics API. */
-	int cur_api = -1;
-	for(int i = 0; i < GRAPHICS_API_COUNT + 1; i++) {
-		if (g_strcmp0(api, graphics_apis_names[i]) == 0) {
-			cur_api = i - 1;
-		}
-	}
-
-	/* If it's a valid API sets it. */
-	if(cur_api != -1) {
-		current_graphics_api = cur_api;
-	} else { /* Else sets to the default. */
-		cur_api = DEFAULT_GRAPHICS_API;
-		/* Sets the default option on the graphics API dropdown. */
-		gtk_combo_box_set_active (GTK_COMBO_BOX (api_dropdown), DEFAULT_GRAPHICS_API + 1);
-	}
-
-	printf("Current graphics API set to %s (%d)\n", graphics_apis_names[cur_api+1], cur_api);
-
-	g_free (api);
-
-}
-
-static void on_toggle_minimal_graphics (GtkToggleButton *widget, gpointer user_data) {
-
-	GtkToggleButton *minimal_toggle = widget;
-
-	/* Gets the changed API. */
-	minimal_graphics_mode = gtk_toggle_button_get_active(minimal_toggle);
-
-	if(minimal_graphics_mode == TRUE)
-		printf("Minimal graphics mode enabled\n");
-	else
-		printf("Minimal graphics mode disabled\n");
-
-}
-
-void launch_game(GtkWidget *widget, gpointer data ) {
+void launch_game(unsigned api_id) {
 
     printf("Launching game...\n");
 
 	gtk_widget_hide (main_window); // Hides the main windows.
 
+	unsigned argc = 2; /* The arg count. */
+	char **argv = (char**)malloc(argc * sizeof(char*)); /* Allocate space to hold the arg list. */
+
+	/* Allocate space for the first arg (program name) string and coppies it to the correct place. */
+	argv[0] = (char*)malloc(strlen(1 + EXEC_PATH) * sizeof(char));
+	strcpy(argv[0], EXEC_PATH);
+
+	/* Allocate space for the second arg (graphics api) string and coppies it to the correct place. */
+	argv[1] = (char*)malloc((1 + strlen(graphic_api_args[api_id])) * sizeof(char));
+	strcpy(argv[1], graphic_api_args[api_id]);
+
+	/* Prints the arguments */
+	for(int i = 0; i < argc; i++) {
+		printf("%s ", argv[i]);
+	}
+	printf("\n");
+	fflush(stdin);
+
+	// Execute the came on Linux.
 	#if __linux__
-
-		int argc = minimal_graphics_mode ? 2 + MINIMAL_ARGS_COUNT : 2; /* Gets the arg count. */
-		char **argv = (char**)malloc(argc * sizeof(char*)); /* Allocate space to hold the arg list. */
-
-		/* Allocate space for the first arg (program name) string and coppies it to the correct place. */
-		argv[0] = (char*)malloc(strlen(1 + EXEC_PATH) * sizeof(char));
-		strcpy(argv[0], EXEC_PATH);
-
-		/* Allocate space for the second arg (graphics api) string and coppies it to the correct place. */
-		argv[1] = (char*)malloc((1 + strlen(graphics_apis_args[current_graphics_api])) * sizeof(char));
-		strcpy(argv[1], graphics_apis_args[current_graphics_api]);
-
-		/* Does the same to the remaining args if in minimal graphics mode */
-		if(minimal_graphics_mode) {
-			for(int i = 0; i < MINIMAL_ARGS_COUNT; i++) {
-				argv[2 + i] = (char*)malloc((1 + strlen(minimal_args[i])) * sizeof(char));
-				strcpy(argv[2 + i], minimal_args[i]);
-			}
-		}
-
-		/* Prints the arguments */
-		printf("argc: %d argv:", argc);
-		for(int i = 0; i < argc; i++) {
-			printf(" %s", argv[i]);
-		}
-		printf("\n");
 
 		/* Spawn a child process to run the program. */
 		pid_t pid = fork();
@@ -131,6 +76,8 @@ void launch_game(GtkWidget *widget, gpointer data ) {
 			waitpid(pid, NULL, 0); /* Wait for child to exit */
 		}
 
+	# else
+
 	#endif
 
 	// Closes the program when the child process closes.
@@ -138,67 +85,77 @@ void launch_game(GtkWidget *widget, gpointer data ) {
 
 }
 
-static void activate (GtkApplication *app, gpointer user_data) {
+/* Called when a button is pressed. */
+static void press_api_launch_button (GtkButton *widget, gpointer user_data) {
 
-	/* MAIN WINDOW ============================================================================================ */
+	/* Gets the clicked button label to check for graphic API.  */
+	const gchar *api_button_name = gtk_button_get_label (widget);
+	
+	/* Verifies the selected graphics API. */
+	unsigned api_id;
+	for(unsigned i = 0; i < GRAPHIC_API_COUNT + 1; i++) {
+		/* Compares the label in the button to the API button names to determine which was clicked. */
+		if (g_strcmp0(api_button_name, graphic_api_button_text_names[i]) == 0) { 
+			api_id = i;
+		}
+	}
+
+	/* Launch the game with the correct API. */
+	launch_game(api_id);
+
+}
+
+/* Creates the window and program interface. */
+static void activate (GtkApplication *app, gpointer user_data) {
 
 	/* Creates the main window of the program. */
 	main_window = gtk_application_window_new (app);
 	gtk_window_set_title (GTK_WINDOW (main_window), PROGRAM_TITLE);
-	gtk_window_set_default_size (GTK_WINDOW (main_window), -1, -1);
+	gtk_window_set_default_size (GTK_WINDOW (main_window), 360, 480);
+	gtk_window_set_resizable(GTK_WINDOW (main_window), FALSE);
 	gtk_container_set_border_width (GTK_CONTAINER (main_window), 10);
 
-	/* GRID LAYOUT =========================================================================================== */
-	GtkWidget *layout = gtk_grid_new ();
+	/* Creates layout button to put other elements in. */
+	GtkWidget *layout = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);
+	/* Adds grid to main window. */
 	gtk_container_add (GTK_CONTAINER (main_window), layout);
 
-	/* API DROPDOWN ========================================================================================== */
-
-	/* Creates a label to indicate what the combo box is for. */
-	GtkWidget *api_dropdown_label = gtk_label_new_with_mnemonic ("Graphics API:");
-	gtk_grid_attach (GTK_GRID (layout), api_dropdown_label, 0, 0, 1, 1); /* Adds to the grid. */
-
-	/* Create the combo box and append graphic api names to it. */
-	GtkWidget *api_dropdown = gtk_combo_box_text_new ();
-	gtk_grid_attach (GTK_GRID (layout), api_dropdown, 0, 2, 1, 1); /* Adds to the grid. */ 
+	#if defined(BANNER_PATH)
 	
-	/* Add elements to the dropdown.*/ 
-	for (int i = 0; i < GRAPHICS_API_COUNT + 1; i++) {
-		gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (api_dropdown), graphics_apis_names[i]);
+		#if __linux__
+
+			/* Checks if the file exists. */
+			if(access(BANNER_PATH, F_OK) != -1) {
+
+				/* Creates game banner */
+				GtkWidget *banner = gtk_image_new_from_file (BANNER_PATH);
+				/* Adds to the grid. */
+				gtk_box_pack_start (GTK_BOX (layout), banner, FALSE, FALSE, 0);
+
+			}
+
+		#endif
+
+	#endif
+
+	/* Creates buttons for each API. */
+	for(int i = 0; i < GRAPHIC_API_COUNT; i++) {
+
+		/* Creates the button. */
+		GtkWidget *api_button = gtk_button_new_with_label (graphic_api_button_text_names[i]);
+		/* Adds to the grid. */
+		gtk_box_pack_start (GTK_BOX (layout), api_button, FALSE, FALSE, 0);
+		/* Connects signal for when the button is pressed. */
+		g_signal_connect (api_button, "button-press-event", G_CALLBACK (press_api_launch_button), NULL);
+
 	}
 
-	/* Sets the default element of the dropdown. */
-	gtk_combo_box_set_active (GTK_COMBO_BOX (api_dropdown), DEFAULT_GRAPHICS_API + 1);
-	/* Connects signal for when the window changes. */
-	g_signal_connect (api_dropdown, "changed", G_CALLBACK (on_api_dropdown_changed), NULL);
-
-	/* TOGGLE MINIMAL ======================================================================================== */
-
-	/* Creates a label to indicate what the toggle button is for. */
-	GtkWidget *minimal_toggle_label = gtk_label_new_with_mnemonic ("Use minimal graphical settings");
-	gtk_grid_attach (GTK_GRID (layout), minimal_toggle_label, 0, 3, 1, 1); /* Adds to the grid. */
-
-	GtkWidget *minimal_toggle = gtk_toggle_button_new();
-	gtk_grid_attach (GTK_GRID (layout), minimal_toggle, 1, 3, 1, 1); /* Adds to the grid. */
-	/* Connects signal for when the toggle changes. */
-	g_signal_connect (minimal_toggle, "toggled", G_CALLBACK (on_toggle_minimal_graphics), NULL);
-
-	/* LAUNCH BUTTON ========================================================================================= */
-	GtkWidget *launch_button = gtk_button_new_with_label ("Launch Game");
-	gtk_grid_attach (GTK_GRID (layout), launch_button, 0, 4, 1, 1); /* Adds to the grid. */
-	/* Connects signal for when the button is pressed. */
-	g_signal_connect (launch_button, "button-press-event", G_CALLBACK (launch_game), NULL);
-
-	/* ======================================================================================================= */
-
+	/* Displays the interface. */
 	gtk_widget_show_all (main_window);
 
 }
 
 int main (int argc, char **argv) {
-
-	current_graphics_api = DEFAULT_GRAPHICS_API;
-	minimal_graphics_mode = FALSE;
 
 	GtkApplication *app;
 	int status;
